@@ -15,7 +15,7 @@ import {
   purchases,
   teams,
   teamMembers,
-  coupons,
+  seats,
   CourseStatus,
   TeamMemberRole,
 } from "~/db/schema";
@@ -225,10 +225,10 @@ function generateSeats(
   purchaseId: number,
   quantity: number
 ) {
-  const created: (typeof coupons.$inferSelect)[] = [];
+  const created: (typeof seats.$inferSelect)[] = [];
   for (let i = 0; i < quantity; i++) {
     const seat = db
-      .insert(coupons)
+      .insert(seats)
       .values({
         teamId,
         courseId,

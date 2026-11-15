@@ -2,7 +2,7 @@ import { Link, useFetcher, redirect } from "react-router";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import type { Route } from "./+types/redeem.$code";
+import type { Route } from "./+types/claim.$code";
 import { getCurrentUserId } from "~/lib/session";
 import { resolveCountry } from "~/lib/country.server";
 import { parseParams, parseFormData } from "~/lib/validation";
@@ -11,7 +11,7 @@ import { Button } from "~/components/ui/button";
 import { Ticket, AlertCircle, CheckCircle2, Globe } from "lucide-react";
 import { data } from "react-router";
 import { db } from "~/db";
-import { purchases, coupons, courses, enrollments } from "~/db/schema";
+import { purchases, seats, courses, enrollments } from "~/db/schema";
 import { eq, and } from "drizzle-orm";
 
 function getCourseById(id: number) {
@@ -19,7 +19,7 @@ function getCourseById(id: number) {
 }
 
 function getSeatByCode(code: string) {
-  return db.select().from(coupons).where(eq(coupons.code, code)).get();
+  return db.select().from(seats).where(eq(seats.code, code)).get();
 }
 
 function isUserEnrolled(userId: number, courseId: number) {
@@ -48,7 +48,7 @@ function claimSeat(
     return { ok: false, error: "Seat not found" };
   }
 
-  if (seat.redeemedByUserId !== null) {
+  if (seat.claimedByUserId !== null) {
     return { ok: false, error: "This Seat has already been claimed" };
   }
 
@@ -80,12 +80,12 @@ function claimSeat(
     };
   }
 
-  db.update(coupons)
+  db.update(seats)
     .set({
-      redeemedByUserId: userId,
-      redeemedAt: new Date().toISOString(),
+      claimedByUserId: userId,
+      claimedAt: new Date().toISOString(),
     })
-    .where(eq(coupons.id, seat.id))
+    .where(eq(seats.id, seat.id))
     .run();
 
   const enrollment = db
@@ -123,9 +123,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   const currentUserId = await getCurrentUserId(request);
   if (!currentUserId) {
-    throw redirect(
-      `/login?redirectTo=${encodeURIComponent(`/redeem/${code}`)}`
-    );
+    throw redirect(`/login?redirectTo=${encodeURIComponent(`/claim/${code}`)}`);
   }
 
   const course = getCourseById(seat.courseId);
@@ -133,7 +131,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw data("Course not found.", { status: 404 });
   }
 
-  const alreadyClaimed = seat.redeemedByUserId !== null;
+  const alreadyClaimed = seat.claimedByUserId !== null;
   const alreadyEnrolled = isUserEnrolled(currentUserId, seat.courseId);
 
   // Check country mismatch upfront so we can show a clear message

@@ -5,7 +5,7 @@ import { getCurrentUserId } from "~/lib/session";
 import { db } from "~/db";
 import {
   courses,
-  coupons,
+  seats,
   lessons,
   modules,
   purchases,
@@ -150,10 +150,10 @@ export async function action({ params, request }: Route.ActionArgs) {
   // A Seat that has been claimed belongs to the team — the student cannot
   // ask for a refund on it on their own.
   const claimedSeat = db
-    .select({ id: coupons.id })
-    .from(coupons)
+    .select({ id: seats.id })
+    .from(seats)
     .where(
-      and(eq(coupons.purchaseId, purchase.id), isNotNull(coupons.redeemedAt))
+      and(eq(seats.purchaseId, purchase.id), isNotNull(seats.claimedAt))
     )
     .get();
 

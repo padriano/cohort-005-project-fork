@@ -15,7 +15,7 @@ import {
   lessonProgress,
   courseRatings,
   purchases,
-  coupons,
+  seats,
   refunds,
   videoWatchEvents,
   LessonProgressStatus,
@@ -474,10 +474,10 @@ function getRefundOffer(userId: number, course: { id: number; price: number }) {
   }
 
   const claimedSeat = db
-    .select({ id: coupons.id })
-    .from(coupons)
+    .select({ id: seats.id })
+    .from(seats)
     .where(
-      and(eq(coupons.purchaseId, purchase.id), isNotNull(coupons.redeemedAt))
+      and(eq(seats.purchaseId, purchase.id), isNotNull(seats.claimedAt))
     )
     .get();
 

@@ -10,7 +10,7 @@ import { db } from "~/db";
 import {
   teams,
   teamMembers,
-  coupons,
+  seats,
   courses,
   users,
   TeamMemberRole,
@@ -35,7 +35,7 @@ function getTeamForAdmin(userId: number) {
 }
 
 function getSeatsForTeam(teamId: number) {
-  return db.select().from(coupons).where(eq(coupons.teamId, teamId)).all();
+  return db.select().from(seats).where(eq(seats.teamId, teamId)).all();
 }
 
 function getCourseById(id: number) {
@@ -112,7 +112,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
     const entry = courseMap.get(seat.courseId)!;
     entry.total++;
-    if (seat.redeemedByUserId !== null) {
+    if (seat.claimedByUserId !== null) {
       entry.claimed++;
     }
   }
@@ -130,8 +130,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Build Seat rows with the email of whoever claimed each one
   const seatRows: SeatRow[] = allSeats.map((seat) => {
     let claimedByEmail: string | null = null;
-    if (seat.redeemedByUserId !== null) {
-      const user = getUserById(seat.redeemedByUserId);
+    if (seat.claimedByUserId !== null) {
+      const user = getUserById(seat.claimedByUserId);
       claimedByEmail = user?.email ?? null;
     }
     const course = getCourseById(seat.courseId);
@@ -152,7 +152,7 @@ function CopyButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    const url = `${window.location.origin}/redeem/${code}`;
+    const url = `${window.location.origin}/claim/${code}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
