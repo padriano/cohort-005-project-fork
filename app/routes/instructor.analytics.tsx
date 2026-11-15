@@ -130,7 +130,7 @@ type TopBuyer = {
   spendCents: number;
   purchaseCount: number;
   seatsBought: number;
-  seatsUnredeemed: number;
+  seatsUnclaimed: number;
   enrolled: boolean;
 };
 
@@ -341,7 +341,7 @@ function getTopBuyers(
     .select({
       userId: purchases.userId,
       bought: count(coupons.id),
-      unredeemed: sql<number>`sum(case when ${coupons.redeemedByUserId} is null then 1 else 0 end)`,
+      unclaimed: sql<number>`sum(case when ${coupons.redeemedByUserId} is null then 1 else 0 end)`,
     })
     .from(coupons)
     .innerJoin(purchases, eq(coupons.purchaseId, purchases.id))
@@ -376,7 +376,7 @@ function getTopBuyers(
     spendCents: Number(buyer.spend ?? 0),
     purchaseCount: buyer.purchaseCount,
     seatsBought: seatsByUser.get(buyer.userId)?.bought ?? 0,
-    seatsUnredeemed: Number(seatsByUser.get(buyer.userId)?.unredeemed ?? 0),
+    seatsUnclaimed: Number(seatsByUser.get(buyer.userId)?.unclaimed ?? 0),
     enrolled: enrolled.has(buyer.userId),
   }));
 }
@@ -825,15 +825,15 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     ? requestedCourseId
     : null;
 
-  // Unanswered questions. A question qualifies when it is top-level, not
+  // Unanswered comments. A comment qualifies when it is top-level, not
   // deleted, not written by staff, and has no reply from the course's
   // instructor or an admin.
-  const questionsSince = rangeStart(range);
-  const questionAuthor = alias(users, "author");
+  const commentsSince = rangeStart(range);
+  const commentAuthor = alias(users, "author");
   const reply = alias(comments, "reply");
   const replyAuthor = alias(users, "reply_author");
 
-  // Correlated: matches a live reply, by staff, to the outer question.
+  // Correlated: matches a live reply, by staff, to the outer comment.
   const staffReply = db
     .select({ one: sql`1` })
     .from(reply)
@@ -849,40 +849,40 @@ export async function loader({ request, url }: Route.LoaderArgs) {
       )
     );
 
-  const questionConditions = [
+  const commentConditions = [
     isNull(comments.parentId),
     isNull(comments.deletedAt),
-    // Staff asking their own question shouldn't queue up as work for themselves.
-    ne(questionAuthor.role, UserRole.Admin),
+    // Staff posting their own comment shouldn't queue up as work for themselves.
+    ne(commentAuthor.role, UserRole.Admin),
     ne(comments.userId, courses.instructorId),
     notExists(staffReply),
   ];
 
   if (instructorId !== null) {
-    questionConditions.push(eq(courses.instructorId, instructorId));
+    commentConditions.push(eq(courses.instructorId, instructorId));
   }
 
-  const questionRow = db
+  const commentRow = db
     .select({
       inRange:
-        questionsSince === null
+        commentsSince === null
           ? count(comments.id)
-          : sql<number>`sum(case when ${comments.createdAt} >= ${questionsSince} then 1 else 0 end)`,
+          : sql<number>`sum(case when ${comments.createdAt} >= ${commentsSince} then 1 else 0 end)`,
       total: count(comments.id),
     })
     .from(comments)
-    .innerJoin(questionAuthor, eq(comments.userId, questionAuthor.id))
+    .innerJoin(commentAuthor, eq(comments.userId, commentAuthor.id))
     .innerJoin(lessons, eq(comments.lessonId, lessons.id))
     .innerJoin(modules, eq(lessons.moduleId, modules.id))
     .innerJoin(courses, eq(modules.courseId, courses.id))
-    .where(and(...questionConditions))
+    .where(and(...commentConditions))
     .get();
 
   // sum() is null over an empty set; count() is already 0.
-  const questionsInRange = Number(questionRow?.inRange ?? 0);
-  const questions = {
-    inRange: questionsInRange,
-    older: (questionRow?.total ?? 0) - questionsInRange,
+  const commentsInRange = Number(commentRow?.inRange ?? 0);
+  const unansweredComments = {
+    inRange: commentsInRange,
+    older: (commentRow?.total ?? 0) - commentsInRange,
   };
 
   // Gross revenue, the platform's fee and the instructor's net for the range.
@@ -928,7 +928,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
 
   // How many people paid, and how many are learning. Deliberately two numbers:
   // one team purchase is a single buyer covering several seats, and someone who
-  // redeems a seat enrols without a purchase row of their own.
+  // claims a seat enrols without a purchase row of their own.
   const buyerCountRow = db
     .select({ buyerCount: countDistinct(purchases.userId) })
     .from(purchases)
@@ -981,9 +981,9 @@ export async function loader({ request, url }: Route.LoaderArgs) {
           .get();
 
   return {
-    // Split rather than filtered: the range applies, but questions older than
+    // Split rather than filtered: the range applies, but comments older than
     // it are still reported, because months of silence is the urgent case.
-    questions,
+    unansweredComments,
     audience,
     buyers: getTopBuyers(instructorId, range),
     ratings: getRatingSummary(instructorId, range),
@@ -1132,11 +1132,11 @@ function TopBuyers({
                   </span>{" "}
                   <span className="text-xs text-muted-foreground">
                     bought {buyer.seatsBought},{" "}
-                    {buyer.seatsUnredeemed > 0 ? (
+                    {buyer.seatsUnclaimed > 0 ? (
                       // The prompt to chase: seats paid for that nobody is
                       // using are the most actionable thing on this table.
                       <span className="font-medium text-foreground">
-                        {buyer.seatsUnredeemed} unused
+                        {buyer.seatsUnclaimed} unused
                       </span>
                     ) : (
                       "all claimed"
@@ -1520,7 +1520,7 @@ export default function InstructorAnalytics({
     unpublished,
     audience,
     buyers,
-    questions,
+    unansweredComments,
     ratings,
   } = loaderData;
 
@@ -1662,7 +1662,7 @@ export default function InstructorAnalytics({
               <StatCard
                 label="Enrolled students"
                 value={audience.studentCount}
-                hint={`Learners with access, seats included.${
+                hint={`Students with access, seats included.${
                   audience.revenuePerStudentCents === null
                     ? ""
                     : ` ${formatMoney(
@@ -1672,22 +1672,22 @@ export default function InstructorAnalytics({
                 emptyHint="Nobody has enrolled in this period."
               />
               <StatCard
-                label="Unanswered questions"
-                value={questions.inRange}
+                label="Unanswered comments"
+                value={unansweredComments.inRange}
                 hint={
-                  questions.older > 0
-                    ? `Plus ${questions.older} from before this period.`
+                  unansweredComments.older > 0
+                    ? `Plus ${unansweredComments.older} from before this period.`
                     : "Students waiting on a reply."
                 }
                 // Quiet this period is only good news if the backlog is empty
                 // too, so the older count keeps its place in the empty copy.
                 emptyHint={
-                  questions.older > 0
-                    ? `None this period, but ${questions.older} still waiting from before.`
+                  unansweredComments.older > 0
+                    ? `None this period, but ${unansweredComments.older} still waiting from before.`
                     : "Nothing is waiting on you."
                 }
                 action={
-                  questions.inRange + questions.older > 0 ? (
+                  unansweredComments.inRange + unansweredComments.older > 0 ? (
                     <Link
                       to="/instructor/questions"
                       className="mt-3 inline-block text-xs font-medium text-primary hover:underline"

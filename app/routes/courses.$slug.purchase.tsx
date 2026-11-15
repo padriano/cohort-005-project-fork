@@ -219,7 +219,7 @@ function getOrCreateTeamForUser(userId: number) {
   return team;
 }
 
-function generateCoupons(
+function generateSeats(
   teamId: number,
   courseId: number,
   purchaseId: number,
@@ -227,7 +227,7 @@ function generateCoupons(
 ) {
   const created: (typeof coupons.$inferSelect)[] = [];
   for (let i = 0; i < quantity; i++) {
-    const coupon = db
+    const seat = db
       .insert(coupons)
       .values({
         teamId,
@@ -237,7 +237,7 @@ function generateCoupons(
       })
       .returning()
       .get();
-    created.push(coupon);
+    created.push(seat);
   }
   return created;
 }
@@ -251,8 +251,8 @@ function createTeamPurchase(
 ) {
   const purchase = createPurchase(userId, courseId, amountPaid, country);
   const team = getOrCreateTeamForUser(userId);
-  const teamCoupons = generateCoupons(team.id, courseId, purchase.id, quantity);
-  return { purchase, team, coupons: teamCoupons };
+  const teamSeats = generateSeats(team.id, courseId, purchase.id, quantity);
+  return { purchase, team, seats: teamSeats };
 }
 
 const purchaseParamsSchema = z.object({
@@ -270,7 +270,7 @@ const purchaseActionSchema = z.discriminatedUnion("intent", [
 export function meta({ loaderData }: Route.MetaArgs) {
   const title = loaderData?.course?.title ?? "Purchase";
   return [
-    { title: `Confirm Purchase: ${title} — Cadence` },
+    { title: `Enroll: ${title} — Cadence` },
     { name: "description", content: `Confirm your enrollment in ${title}` },
   ];
 }
@@ -397,6 +397,7 @@ export default function PurchaseConfirmation({
   const [searchParams] = useSearchParams();
   const defaultMode =
     isEnrolled || searchParams.get("mode") === "team" ? "team" : "self";
+  const [mode, setMode] = useState<string>(defaultMode);
   const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
@@ -419,7 +420,9 @@ export default function PurchaseConfirmation({
         Back to course
       </Link>
 
-      <h1 className="mb-2 text-2xl font-bold">Confirm Your Purchase</h1>
+      <h1 className="mb-2 text-2xl font-bold">
+        {mode === "team" ? "Confirm Your Purchase" : "Confirm Your Enrollment"}
+      </h1>
       <p className="mb-8 text-muted-foreground">
         Review the details below before enrolling.
       </p>
@@ -481,20 +484,20 @@ export default function PurchaseConfirmation({
               </div>
             )}
 
-            <Tabs defaultValue={defaultMode}>
+            <Tabs value={mode} onValueChange={setMode}>
               {!isEnrolled && (
                 <TabsList className="mb-6 w-full">
                   <TabsTrigger value="self" className="flex-1">
-                    Buy for Myself
+                    Enroll
                   </TabsTrigger>
                   <TabsTrigger value="team" className="flex-1">
-                    Buy for Your Team
+                    Buy Seats
                   </TabsTrigger>
                 </TabsList>
               )}
 
               <TabsContentNoShift>
-                {/* Buy for Myself */}
+                {/* Enroll */}
                 {!isEnrolled && (
                   <TabsContent value="self" forceMount>
                     <div className="flex items-center justify-between">
@@ -538,7 +541,7 @@ export default function PurchaseConfirmation({
                           <Button size="lg" disabled={isSubmitting}>
                             {isSubmitting
                               ? "Processing..."
-                              : "Confirm Purchase"}
+                              : "Confirm Enrollment"}
                           </Button>
                         </fetcher.Form>
                       </div>
@@ -546,7 +549,7 @@ export default function PurchaseConfirmation({
                   </TabsContent>
                 )}
 
-                {/* Buy for Your Team */}
+                {/* Buy Seats */}
                 <TabsContent value="team" forceMount>
                   <div className="space-y-6">
                     {/* Quantity selector */}
@@ -588,10 +591,10 @@ export default function PurchaseConfirmation({
                     </div>
 
                     <p className="text-sm text-muted-foreground">
-                      You&apos;ll receive {quantity} unique coupon{" "}
-                      {quantity === 1 ? "link" : "links"} to share with your
-                      team members. Each link grants one person access to this
-                      course.
+                      You&apos;ll receive {quantity}{" "}
+                      {quantity === 1 ? "seat" : "seats"}, each with a unique
+                      link to share with your team members. Each link grants one
+                      person access to this course.
                     </p>
 
                     <div className="flex items-center gap-3">
