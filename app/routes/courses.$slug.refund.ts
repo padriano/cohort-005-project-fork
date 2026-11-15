@@ -12,15 +12,17 @@ import {
   refunds,
   users,
   videoWatchEvents,
+  lessonProgress,
+  LessonProgressStatus,
   RefundStatus,
 } from "~/db/schema";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { parseFormData, parseParams } from "~/lib/validation";
-import { getDiscountForCountry } from "~/lib/ppp";
 import { formatPrice } from "~/lib/utils";
 
 const REFUND_WINDOW_DAYS = 14;
 const MAX_WATCHED_HOURS = 2;
+const MAX_COMPLETED_SHARE = 0.5;
 
 const refundParamsSchema = z.object({
   slug: z.string().min(1),
@@ -152,9 +154,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   const claimedSeat = db
     .select({ id: seats.id })
     .from(seats)
-    .where(
-      and(eq(seats.purchaseId, purchase.id), isNotNull(seats.claimedAt))
-    )
+    .where(and(eq(seats.purchaseId, purchase.id), isNotNull(seats.claimedAt)))
     .get();
 
   if (claimedSeat) {
@@ -200,10 +200,32 @@ export async function action({ params, request }: Route.ActionArgs) {
     });
   }
 
-  // A purchase made at a purchasing-power price is given back at that price,
-  // not at the list price of the course.
-  const pppDiscount = getDiscountForCountry(purchase.country);
-  const refundableAmount = pppDiscount > 0 ? purchase.amountPaid : course.price;
+  if (courseLessonIds.length > 0) {
+    const completed = db
+      .select({ count: sql<number>`count(*)` })
+      .from(lessonProgress)
+      .where(
+        and(
+          eq(lessonProgress.userId, currentUserId),
+          eq(lessonProgress.status, LessonProgressStatus.Completed),
+          inArray(lessonProgress.lessonId, courseLessonIds)
+        )
+      )
+      .get();
+
+    if (
+      (completed?.count ?? 0) / courseLessonIds.length >=
+      MAX_COMPLETED_SHARE
+    ) {
+      throw data(
+        "You have completed too much of this course to get a refund.",
+        { status: 403 }
+      );
+    }
+  }
+
+  // A Refund is always for what was actually paid on the Purchase.
+  const refundableAmount = purchase.amountPaid;
 
   const formData = await request.formData();
   const parsed = parseFormData(formData, refundActionSchema);
@@ -212,8 +234,7 @@ export async function action({ params, request }: Route.ActionArgs) {
     return data({ errors: parsed.errors }, { status: 400 });
   }
 
-  db
-    .insert(refunds)
+  db.insert(refunds)
     .values({
       purchaseId: purchase.id,
       status: RefundStatus.Requested,
@@ -229,9 +250,7 @@ export async function action({ params, request }: Route.ActionArgs) {
     amount: refundableAmount,
   });
 
-  console.log(
-    `[email] to=${email.to} subject=${email.subject}\n${email.body}`
-  );
+  console.log(`[email] to=${email.to} subject=${email.subject}\n${email.body}`);
 
   return redirect("/settings");
 }
