@@ -1689,7 +1689,7 @@ export default function InstructorAnalytics({
                 action={
                   unansweredComments.inRange + unansweredComments.older > 0 ? (
                     <Link
-                      to="/instructor/questions"
+                      to="/instructor/comments"
                       className="mt-3 inline-block text-xs font-medium text-primary hover:underline"
                     >
                       Answer them

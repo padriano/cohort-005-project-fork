@@ -76,7 +76,7 @@ const navItems: NavItem[] = [
   },
   {
     label: "Comments",
-    to: "/instructor/questions",
+    to: "/instructor/comments",
     icon: <MessageSquare className="size-4" />,
     roles: [UserRole.Instructor, UserRole.Admin],
   },
